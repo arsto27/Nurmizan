@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from openai import OpenAI
+from openai import OpenAI, AuthenticationError, RateLimitError, BadRequestError, PermissionDeniedError, APIConnectionError, APITimeoutError
 
 app = FastAPI(title="Nur Mizan AI API")
 ORIGIN = "https://arsto27.github.io"
@@ -43,5 +43,17 @@ def ask(payload: Question, x_app_access: str = Header(default="")):
             input="Soru: "+payload.question+"\nDoğrulanmış kaynak pasajları (JSON): "+context,
             max_output_tokens=900)
         return {"answer":response.output_text,"sources":relevant,"source_count":len(relevant)}
-    except Exception:
-        raise HTTPException(502,"Yapay zekâ servisine erişilemedi. Sunucu kayıtlarını kontrol edin.")
+    except AuthenticationError:
+        raise HTTPException(502,"OpenAI API anahtarı geçersiz veya iptal edilmiş.")
+    except RateLimitError:
+        raise HTTPException(502,"OpenAI kota veya hız sınırı aşıldı. API faturalandırmasını kontrol edin.")
+    except PermissionDeniedError:
+        raise HTTPException(502,"OpenAI model veya proje erişim izni bulunmuyor.")
+    except BadRequestError:
+        raise HTTPException(502,"OpenAI isteği reddetti. Model adını ve parametreleri kontrol edin.")
+    except (APIConnectionError, APITimeoutError):
+        raise HTTPException(502,"OpenAI bağlantısı zaman aşımına uğradı veya kesildi.")
+    except Exception as exc:
+        import logging
+        logging.getLogger("uvicorn.error").error("OpenAI failure type: %s",type(exc).__name__)
+        raise HTTPException(502,"Beklenmeyen OpenAI sunucu hatası. Render Logs bölümünü kontrol edin.")
